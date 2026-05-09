@@ -1,0 +1,73 @@
+# IAM Role Vending System — local development stack
+#
+# Services:
+#   localstack  — AWS IAM + STS simulator
+#   bootstrap   — creates IAM roles in LocalStack (runs once then exits)
+#   vending     — the FastAPI role vending service
+#
+# Quick start:
+#   docker compose up --build
+#   curl http://localhost:8100/health
+#   curl http://localhost:8100/agents
+#
+# Issue credentials:
+#   curl -X POST http://localhost:8100/credentials/issue \
+#     -H 'Content-Type: application/json' \
+#     -d '{
+#       "agent_id": "agent-reader",
+#       "task_type": "read_s3",
+#       "task_description": "Read daily log files",
+#       "resource_constraints": {"s3_buckets": ["logs-archive"], "s3_prefix": "2026/05/"},
+#       "duration_seconds": 900
+#     }'
+
+services:
+
+  localstack:
+    image: localstack/localstack:3.4
+    environment:
+      SERVICES: iam,sts
+      DEBUG: 0
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  bootstrap:
+    build:
+      context: ./bootstrap
+      dockerfile: Dockerfile
+    environment:
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+      VENDING_EXTERNAL_ID: vending-svc-ext-id-2026
+    depends_on:
+      localstack:
+        condition: service_healthy
+    restart: "no"
+
+  vending:
+    build:
+      context: ./vending
+      dockerfile: Dockerfile
+    environment:
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+      VENDING_EXTERNAL_ID: vending-svc-ext-id-2026
+      AWS_ACCOUNT_ID: "000000000000"
+      AWS_DEFAULT_REGION: us-east-1
+      AUDIT_DB_PATH: /data/audit.db
+      JANITOR_INTERVAL: "30"
+    ports:
+      - "8100:8100"
+    volumes:
+      - vending_data:/data
+    depends_on:
+      localstack:
+        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+
+volumes:
+  vending_data:
