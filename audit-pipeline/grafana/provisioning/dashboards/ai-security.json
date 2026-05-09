@@ -1,0 +1,263 @@
+{
+  "title": "AI Agent Security Observability",
+  "uid": "ai-security-v1",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "tags": ["ai", "security", "agents"],
+  "panels": [
+
+    {
+      "id": 1, "type": "row", "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false
+    },
+
+    {
+      "id": 2, "type": "stat", "title": "Total LLM Calls",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(agsec_llm_calls_total)", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "unit": "short" } }
+    },
+
+    {
+      "id": 3, "type": "stat", "title": "Total Tokens",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(agsec_llm_tokens_total)", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "unit": "short" } }
+    },
+
+    {
+      "id": 4, "type": "stat", "title": "Active Tasks",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(agsec_active_tasks)", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "short" } }
+    },
+
+    {
+      "id": 5, "type": "stat", "title": "Policy Violations (5m)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(increase(agsec_policy_violations_total[5m]))", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": { "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 3 },
+            { "color": "red", "value": 10 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 6, "type": "stat", "title": "Injection Detections (5m)",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(increase(agsec_injection_detections_total[5m]))", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": { "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 1 },
+            { "color": "red", "value": 5 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 7, "type": "stat", "title": "Circuit Breakers OPEN",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(agsec_circuit_breaker_open)", "instant": true }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": { "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ]},
+          "color": { "mode": "thresholds" }
+        }
+      }
+    },
+
+    {
+      "id": 10, "type": "row", "title": "Token Usage",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "collapsed": false
+    },
+
+    {
+      "id": 11, "type": "timeseries", "title": "Token Rate by Agent (tokens/sec)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(agsec_llm_tokens_total[1m])",
+          "legendFormat": "{{agent_id}} — {{direction}}"
+        }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*in" },   "properties": [{ "id": "custom.lineStyle", "value": { "fill": "solid" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*out" },  "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 20, "type": "row", "title": "Tool Calls & Policy",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false
+    },
+
+    {
+      "id": 21, "type": "timeseries", "title": "Tool Call Rate by Status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum by (status) (rate(agsec_tool_calls_total[1m]))", "legendFormat": "{{status}}" }
+      ],
+      "options": { "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 15 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "success" }, "properties": [{ "id": "color", "value": { "fixedColor": "green",  "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "error"   }, "properties": [{ "id": "color", "value": { "fixedColor": "red",    "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "blocked" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 22, "type": "timeseries", "title": "Policy Violations / sec by Agent",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(agsec_policy_violations_total[1m])", "legendFormat": "{{agent_id}} — {{violation_type}}" }
+      ],
+      "options": { "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 0.3 },
+            { "color": "red", "value": 1.0 }
+          ]}
+        }
+      }
+    },
+
+    {
+      "id": 30, "type": "row", "title": "Security Events",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false
+    },
+
+    {
+      "id": 31, "type": "timeseries", "title": "Injection Detections by Action",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(agsec_injection_detections_total[2m])", "legendFormat": "{{agent_id}} — {{action}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*BLOCK" }, "properties": [{ "id": "color", "value": { "fixedColor": "red",    "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*FLAG"  }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*WARN"  }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 32, "type": "table", "title": "Circuit Breaker State per Agent",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "agsec_circuit_breaker_open", "legendFormat": "{{agent_id}}", "instant": true },
+        { "expr": "sum by (agent_id) (increase(agsec_circuit_breaker_trips_total[1h]))", "legendFormat": "{{agent_id}} trips", "instant": true }
+      ],
+      "options": { "sortBy": [{ "displayName": "Value #A", "desc": true }] },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value #A" },
+            "properties": [
+              { "id": "displayName", "value": "OPEN" },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "0": { "text": "● CLOSED", "color": "green" }, "1": { "text": "● OPEN",   "color": "red"   } } }
+              ]},
+              { "id": "custom.displayMode", "value": "color-text" }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Value #B" },
+            "properties": [{ "id": "displayName", "value": "Trips (1h)" }]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": 40, "type": "row", "title": "Performance",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }, "collapsed": false
+    },
+
+    {
+      "id": 41, "type": "timeseries", "title": "LLM Latency — P50 / P95 / P99",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (agent_id, le) (rate(agsec_llm_latency_seconds_bucket[2m])))", "legendFormat": "{{agent_id}} — p50" },
+        { "expr": "histogram_quantile(0.95, sum by (agent_id, le) (rate(agsec_llm_latency_seconds_bucket[2m])))", "legendFormat": "{{agent_id}} — p95" },
+        { "expr": "histogram_quantile(0.99, sum by (agent_id, le) (rate(agsec_llm_latency_seconds_bucket[2m])))", "legendFormat": "{{agent_id}} — p99" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*p99" }, "properties": [{ "id": "custom.lineWidth", "value": 3 }] }
+        ]
+      }
+    },
+
+    {
+      "id": 50, "type": "row", "title": "Audit Logs",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 }, "collapsed": false
+    },
+
+    {
+      "id": 51, "type": "logs", "title": "Recent Agent Audit Events",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 41 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{job=\"ai-agent-simulator\"} | json",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": false,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    }
+
+  ]
+}

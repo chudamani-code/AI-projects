@@ -1,0 +1,121 @@
+groups:
+  - name: ai_agent_security
+    interval: 15s
+    rules:
+
+      # ── Token anomaly ─────────────────────────────────────────────────────
+      # Fires when an agent's token rate is 5× its baseline (rolling 2m vs 10m)
+      - alert: AgentTokenSpike
+        expr: |
+          rate(agsec_llm_tokens_total[2m])
+          /
+          (rate(agsec_llm_tokens_total[10m]) + 1)
+          > 5
+        for: 1m
+        labels:
+          severity: warning
+          category: anomaly
+        annotations:
+          summary: "Token spike — {{ $labels.agent_id }}"
+          description: >
+            Agent {{ $labels.agent_id }} is using tokens at {{ $value | humanize }}×
+            its 10-minute baseline. Possible data exfiltration or runaway task.
+          runbook: "https://wiki/runbooks/token-spike"
+
+      # ── Policy violation rate ─────────────────────────────────────────────
+      - alert: PolicyViolationRateHigh
+        expr: rate(agsec_policy_violations_total[1m]) > 0.3
+        for: 30s
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High policy violation rate — {{ $labels.agent_id }}"
+          description: >
+            Agent {{ $labels.agent_id }} is generating {{ $value | humanizePercentage }}
+            policy violations/second. May indicate scope creep or compromised agent.
+
+      - alert: PolicyViolationCritical
+        expr: rate(agsec_policy_violations_total[1m]) > 1.0
+        for: 15s
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "CRITICAL policy violation rate — {{ $labels.agent_id }}"
+          description: >
+            Agent {{ $labels.agent_id }} is violating policy at {{ $value }}/s.
+            Circuit breaker may trip imminently. Review agent scope and inputs.
+
+      # ── Circuit breaker ───────────────────────────────────────────────────
+      - alert: CircuitBreakerOpen
+        expr: agsec_circuit_breaker_open == 1
+        for: 0m    # immediate — no grace period
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Agent HALTED — circuit breaker open — {{ $labels.agent_id }}"
+          description: >
+            Agent {{ $labels.agent_id }} has been halted by its circuit breaker.
+            All tasks are suspended. Manual review required before restart.
+          runbook: "https://wiki/runbooks/circuit-breaker"
+
+      # ── Tool error rate ───────────────────────────────────────────────────
+      - alert: HighToolErrorRate
+        expr: |
+          (
+            rate(agsec_tool_calls_total{status="error"}[5m])
+            /
+            (rate(agsec_tool_calls_total[5m]) + 0.001)
+          ) > 0.25
+        for: 2m
+        labels:
+          severity: warning
+          category: reliability
+        annotations:
+          summary: "High tool error rate — {{ $labels.agent_id }}"
+          description: >
+            {{ $value | humanizePercentage }} of tool calls are failing for
+            agent {{ $labels.agent_id }}. Check tool permissions and dependencies.
+
+      # ── Injection detection ───────────────────────────────────────────────
+      - alert: InjectionAttackBlocked
+        expr: rate(agsec_injection_detections_total{action="BLOCK"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Prompt injection BLOCKED — {{ $labels.agent_id }}"
+          description: >
+            The guardrail gateway blocked a prompt injection attempt targeting
+            agent {{ $labels.agent_id }}. Review audit logs immediately.
+
+      - alert: InjectionAttackRateElevated
+        expr: rate(agsec_injection_detections_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Elevated injection attempt rate — {{ $labels.agent_id }}"
+          description: >
+            {{ $value }}/s injection attempts detected. May indicate a targeted
+            attack campaign or compromised upstream data source.
+
+      # ── LLM latency ───────────────────────────────────────────────────────
+      - alert: LLMLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            rate(agsec_llm_latency_seconds_bucket[5m])
+          ) > 10
+        for: 3m
+        labels:
+          severity: warning
+          category: reliability
+        annotations:
+          summary: "LLM P95 latency > 10s — {{ $labels.agent_id }}"
+          description: >
+            P95 LLM latency for agent {{ $labels.agent_id }} is
+            {{ $value | humanizeDuration }}. Consider task timeout enforcement.

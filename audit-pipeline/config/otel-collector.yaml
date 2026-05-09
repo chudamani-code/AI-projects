@@ -1,0 +1,73 @@
+# otel-collector.yaml
+# Receives traces + logs from the Python agent via gRPC,
+# routes them to Tempo (traces) and Loki (logs).
+# Also exposes a Prometheus endpoint that Prometheus scrapes for metrics.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+
+  # Add environment label to every signal
+  resource:
+    attributes:
+      - key: environment
+        value: local-dev
+        action: upsert
+
+  # Drop noisy health-check spans
+  filter/spans:
+    spans:
+      exclude:
+        match_type: strict
+        attributes:
+          - key: http.route
+            value: /health
+
+exporters:
+  # Traces → Tempo
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Logs → Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    labels:
+      resource:
+        service.name: "service_name"
+        agent_id: "agent_id"
+      attributes:
+        level: ""
+    default_labels_enabled:
+      exporter: false
+      job: true
+
+  # Debug (comment out in production)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch, filter/spans]
+      exporters:  [otlp/tempo]
+
+    logs:
+      receivers:  [otlp]
+      processors: [batch, resource]
+      exporters:  [loki]
+
+  telemetry:
+    logs:
+      level: warn

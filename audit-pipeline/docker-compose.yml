@@ -1,0 +1,110 @@
+version: "3.9"
+
+# Full AI security observability stack:
+#
+#   simulator   → emits metrics (Prometheus) + traces/logs (OTLP gRPC)
+#   otel-collector → routes traces→Tempo, logs→Loki
+#   prometheus  → scrapes metrics, evaluates alert rules
+#   tempo       → stores distributed traces
+#   loki        → stores structured logs
+#   grafana     → dashboards (auto-provisioned on startup)
+#
+# Quick start:
+#   docker compose up --build
+#   open http://localhost:3000   (Grafana — admin/admin)
+#
+# Anomalies fire after 60 seconds — watch the dashboard respond.
+
+services:
+
+  # ── AI agent traffic simulator ─────────────────────────────────────────────
+  simulator:
+    build:
+      context: ./agent
+    environment:
+      ANOMALY_DELAY: "60"
+      METRICS_PORT: "8000"
+      OTEL_ENDPOINT: "http://otel-collector:4317"
+      SERVICE_NAME: "ai-agent-simulator"
+      ENVIRONMENT: "local"
+    ports:
+      - "8000:8000"    # Prometheus scrape target
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  # ── OpenTelemetry Collector ────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    depends_on:
+      - tempo
+      - loki
+    restart: unless-stopped
+
+  # ── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # ── Tempo (distributed traces) ─────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./config/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"    # Tempo HTTP API
+    restart: unless-stopped
+
+  # ── Loki (structured logs) ─────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.1.0
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_FEATURE_TOGGLES_ENABLE: "alertingSimplifiedRouting"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  grafana_data:
