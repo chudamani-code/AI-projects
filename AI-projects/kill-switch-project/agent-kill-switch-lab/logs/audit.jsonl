@@ -1,0 +1,2 @@
+{"ts": 1778293886.842, "event": "agent_start", "agent_id": "agent-001", "task": "List the files and summarize each one."}
+{"ts": 1778293887.562, "event": "circuit_state_change", "agent_id": "agent-001", "state": "open", "reason": "Failure threshold (3) reached: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CarD9EQUkprrDdEFooAuZ'}"}

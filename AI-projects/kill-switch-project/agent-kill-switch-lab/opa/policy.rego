@@ -41,7 +41,7 @@ is_allowed_scope if {
 
 # Block path traversal in any path input
 has_dangerous_input if {
-    some val in object.values(input.inputs)
+    some key, val in input.inputs
     is_string(val)
     contains(val, "..")
 }
@@ -85,7 +85,7 @@ deny_reason := msg if {
 }
 
 deny_reason := "Path traversal detected in inputs" if {
-    some val in object.values(input.inputs)
+    some key, val in input.inputs
     is_string(val)
     contains(val, "..")
 }

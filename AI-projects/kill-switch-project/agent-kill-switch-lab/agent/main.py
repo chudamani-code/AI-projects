@@ -33,7 +33,11 @@ import signal
 import sys
 from pathlib import Path
 
-import anthropic
+try:
+    import anthropic
+except ImportError:
+    print("Error: anthropic module not found. Please install it with 'pip install anthropic'.")
+    sys.exit(1)
 
 from audit_logger import AuditLogger
 from circuit_breaker import CircuitBreaker, CircuitState
