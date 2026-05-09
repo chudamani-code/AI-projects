@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blast Radius Mapper — AI Agent Security</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: rgba(255,255,255,0.08);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --purple: #a78bfa;
+    --teal: #2dd4bf;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --orange: #fb923c;
+    --green: #4ade80;
+    --blue: #60a5fa;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    display: grid;
+    grid-template-columns: 260px 1fr 320px;
+    grid-template-rows: 52px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+  }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  header .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(167,139,250,0.15);
+    color: var(--purple);
+    border: 1px solid rgba(167,139,250,0.3);
+  }
+  header .api-status {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  header .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+  header .dot.err { background: var(--red); }
+
+  /* ── Left panel: agent selector ── */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px 12px;
+  }
+  .panel-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-left: 4px;
+  }
+  .agent-card {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    margin-bottom: 6px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .agent-card:hover { background: var(--surface2); }
+  .agent-card.active {
+    border-color: var(--purple);
+    background: rgba(167,139,250,0.08);
+  }
+  .agent-name { font-weight: 500; font-size: 13px; margin-bottom: 3px; }
+  .agent-trust {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .trust-LOW    { background: rgba(74,222,128,0.15);  color: var(--green);  }
+  .trust-MEDIUM { background: rgba(251,191,36,0.15);  color: var(--amber);  }
+  .trust-HIGH   { background: rgba(248,113,113,0.15); color: var(--red);    }
+
+  .agent-desc {
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ── Center: graph canvas ── */
+  .graph-wrap {
+    position: relative;
+    background: var(--bg);
+  }
+  #graph {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Legend overlay */
+  .legend {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: rgba(26,29,39,0.92);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .legend-line {
+    width: 20px; height: 2px; flex-shrink: 0;
+    background: repeating-linear-gradient(90deg, var(--muted) 0, var(--muted) 4px, transparent 4px, transparent 8px);
+  }
+
+  /* ── Right panel: blast radius analysis ── */
+  .right-panel {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Risk score meter */
+  .risk-meter {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .risk-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+  .risk-score { font-size: 40px; font-weight: 700; line-height: 1; }
+  .risk-bar-wrap { margin: 10px 0 4px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .risk-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+  .risk-caption { font-size: 11px; color: var(--muted); }
+
+  /* Stat row */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .c-crit   { color: var(--red);    }
+  .c-high   { color: var(--orange); }
+  .c-medium { color: var(--amber);  }
+  .c-low    { color: var(--green);  }
+  .c-total  { color: var(--blue);   }
+
+  /* Resource lists */
+  .section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .resource-list { display: flex; flex-direction: column; gap: 4px; }
+  .resource-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: var(--surface2);
+    font-size: 12px;
+  }
+  .resource-row .rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sens-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+  .sens-CRITICAL { background: rgba(248,113,113,0.2); color: var(--red);    }
+  .sens-HIGH     { background: rgba(251,146,60,0.2);  color: var(--orange); }
+  .sens-MEDIUM   { background: rgba(251,191,36,0.2);  color: var(--amber);  }
+  .sens-LOW      { background: rgba(74,222,128,0.2);  color: var(--green);  }
+
+  .lateral-tag {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(251,191,36,0.1);
+    color: var(--amber);
+    flex-shrink: 0;
+  }
+
+  /* What-if panel */
+  .whatif-panel {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .whatif-panel select,
+  .whatif-panel input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 12px;
+    margin-bottom: 8px;
+    outline: none;
+  }
+  .whatif-panel select:focus,
+  .whatif-panel input:focus { border-color: var(--purple); }
+
+  .run-btn {
+    width: 100%;
+    background: rgba(167,139,250,0.15);
+    color: var(--purple);
+    border: 1px solid rgba(167,139,250,0.4);
+    border-radius: 6px;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .run-btn:hover { background: rgba(167,139,250,0.25); }
+
+  .whatif-result {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 6px;
+    background: rgba(248,113,113,0.06);
+    border: 1px solid rgba(248,113,113,0.2);
+    font-size: 11px;
+    line-height: 1.6;
+    display: none;
+  }
+  .whatif-result.visible { display: block; }
+  .whatif-delta { color: var(--red); font-weight: 600; font-size: 14px; }
+
+  /* Empty / loading state */
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 20px 0;
+  }
+
+  /* Attack paths section */
+  .attack-path {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .attack-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .step-node {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .step-Agent    { background: rgba(167,139,250,0.2); color: var(--purple); }
+  .step-Tool     { background: rgba(45,212,191,0.2);  color: var(--teal);   }
+  .step-Scope    { background: rgba(251,191,36,0.2);  color: var(--amber);  }
+  .step-Resource { background: rgba(248,113,113,0.2); color: var(--red);    }
+  .step-arrow    { color: var(--muted); font-size: 9px; }
+  .step-edge     { color: var(--muted); font-size: 9px; margin-left: auto; }
+  .scrollable    { max-height: 200px; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Blast Radius Mapper</h1>
+  <span class="badge">AI Agent Security</span>
+  <div class="api-status">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">connecting…</span>
+  </div>
+</header>
+
+<!-- Left: agent list -->
+<div class="left-panel">
+  <div class="panel-title">Agents</div>
+  <div id="agent-list"></div>
+</div>
+
+<!-- Center: graph -->
+<div class="graph-wrap">
+  <div id="graph"></div>
+  <div class="legend">
+    <div class="panel-title" style="margin-bottom:6px">Legend</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#a78bfa"></div> Agent</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#2dd4bf"></div> Tool</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#fbbf24"></div> Scope</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#f87171"></div> Resource – CRITICAL</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#fb923c"></div> Resource – HIGH</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#fbbf24"></div> Resource – MEDIUM</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#4ade80"></div> Resource – LOW</div>
+    <div class="legend-row"><div class="legend-line"></div> Lateral movement (CAN_REACH)</div>
+  </div>
+</div>
+
+<!-- Right: analysis -->
+<div class="right-panel">
+  <div>
+    <div class="panel-title">Risk score</div>
+    <div class="risk-meter">
+      <div class="risk-label">Blast radius risk</div>
+      <div class="risk-score" id="risk-score">—</div>
+      <div class="risk-bar-wrap"><div class="risk-bar" id="risk-bar" style="width:0%"></div></div>
+      <div class="risk-caption" id="risk-caption">Select an agent to analyse</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel-title">Resource counts</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value c-total" id="stat-total">—</div><div class="stat-label">Total reachable</div></div>
+      <div class="stat-card"><div class="stat-value c-crit"  id="stat-crit">—</div><div class="stat-label">Critical</div></div>
+      <div class="stat-card"><div class="stat-value c-high"  id="stat-high">—</div><div class="stat-label">High</div></div>
+      <div class="stat-card"><div class="stat-value c-medium" id="stat-med">—</div><div class="stat-label">Medium</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel-title">Directly accessible</div>
+    <div class="resource-list" id="direct-list"><div class="empty-state">—</div></div>
+  </div>
+
+  <div>
+    <div class="panel-title">Via lateral movement</div>
+    <div class="resource-list" id="lateral-list"><div class="empty-state">—</div></div>
+  </div>
+
+  <div>
+    <div class="panel-title">What-if analysis</div>
+    <div class="whatif-panel">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">If we add this scope to the selected agent…</div>
+      <select id="whatif-scope">
+        <option value="">— choose a scope —</option>
+        <option value="scope:s3:list">scope:s3:list</option>
+        <option value="scope:s3:read">scope:s3:read</option>
+        <option value="scope:s3:write">scope:s3:write</option>
+        <option value="scope:lambda:invoke">scope:lambda:invoke</option>
+        <option value="scope:ec2:describe">scope:ec2:describe</option>
+        <option value="scope:secretsmanager:read">scope:secretsmanager:read</option>
+        <option value="scope:iam:assume">scope:iam:assume</option>
+        <option value="scope:rds:query">scope:rds:query</option>
+      </select>
+      <button class="run-btn" onclick="runWhatIf()">▶ Run what-if</button>
+      <div class="whatif-result" id="whatif-result"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel-title" id="paths-title">Attack paths</div>
+    <div id="paths-panel"><div class="empty-state">Click a resource node to see attack paths</div></div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+let network = null;
+let allNodes = null;
+let allEdges = null;
+let selectedAgent = null;
+let blastData = null;
+
+// ── Colour maps ───────────────────────────────────────────────────────────────
+const RESOURCE_COLORS = {
+  CRITICAL: { background:'#3d1515', border:'#f87171', font:'#f87171' },
+  HIGH:     { background:'#3d2210', border:'#fb923c', font:'#fb923c' },
+  MEDIUM:   { background:'#3d2f0a', border:'#fbbf24', font:'#fbbf24' },
+  LOW:      { background:'#0d2e18', border:'#4ade80', font:'#4ade80' },
+};
+const GROUP_COLORS = {
+  agent: { background:'#2d1f52', border:'#a78bfa', font:'#a78bfa' },
+  tool:  { background:'#0e2e2c', border:'#2dd4bf', font:'#2dd4bf' },
+  scope: { background:'#38250a', border:'#fbbf24', font:'#fbbf24' },
+};
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+async function init() {
+  // Check API
+  try {
+    await fetch(`${API}/health`);
+    document.getElementById('status-dot').classList.remove('err');
+    document.getElementById('status-text').textContent = 'API connected';
+  } catch {
+    document.getElementById('status-dot').classList.add('err');
+    document.getElementById('status-text').textContent = 'API unreachable — start uvicorn';
+  }
+
+  await loadAgents();
+  await loadGraph();
+}
+
+// ── Agent list ────────────────────────────────────────────────────────────────
+async function loadAgents() {
+  const res = await fetch(`${API}/agents`);
+  const agents = await res.json();
+  const el = document.getElementById('agent-list');
+  el.innerHTML = agents.map(a => `
+    <div class="agent-card" id="card-${a.id}" onclick="selectAgent('${a.id}')">
+      <div class="agent-name">${a.name}</div>
+      <span class="agent-trust trust-${a.trust_level}">${a.trust_level} trust</span>
+      <div class="agent-desc">${a.description}</div>
+    </div>
+  `).join('');
+}
+
+// ── Graph ─────────────────────────────────────────────────────────────────────
+async function loadGraph() {
+  const res = await fetch(`${API}/graph`);
+  const data = await res.json();
+
+  const nodes = data.nodes.map(n => {
+    let color;
+    if (n.group === 'resource') {
+      color = RESOURCE_COLORS[n.sensitivity] || RESOURCE_COLORS.LOW;
+    } else {
+      color = GROUP_COLORS[n.group] || GROUP_COLORS.tool;
+    }
+    return {
+      id: n.id,
+      label: n.label,
+      title: n.title,
+      group: n.group,
+      sensitivity: n.sensitivity,
+      color: { background: color.background, border: color.border, highlight: { background: color.background, border:'#fff' } },
+      font: { color: color.font || '#e2e8f0', size: 11 },
+      shape: n.group === 'agent' ? 'diamond' : n.group === 'resource' ? 'box' : 'ellipse',
+      size: n.group === 'agent' ? 22 : 14,
+      borderWidth: 1.5,
+    };
+  });
+
+  const edges = data.edges.map((e, i) => ({
+    id: i,
+    from: e.from_,
+    to: e.to,
+    label: e.label,
+    dashes: e.dashes,
+    color: { color: e.dashes ? '#fbbf2488' : '#334155', highlight: '#a78bfa' },
+    font: { color: '#64748b', size: 9, align: 'middle' },
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    smooth: e.dashes ? { type: 'curvedCW', roundness: 0.2 } : { type: 'continuous' },
+    width: e.dashes ? 1 : 1,
+  }));
+
+  allNodes = new vis.DataSet(nodes);
+  allEdges = new vis.DataSet(edges);
+
+  const container = document.getElementById('graph');
+  network = new vis.Network(container, { nodes: allNodes, edges: allEdges }, {
+    physics: {
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: { springLength: 100, gravitationalConstant: -60 },
+      stabilization: { iterations: 200 },
+    },
+    interaction: { hover: true, tooltipDelay: 150 },
+  });
+
+  network.on('click', params => {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const node = allNodes.get(nodeId);
+      if (node.group === 'resource' && selectedAgent) {
+        loadAttackPaths(selectedAgent, nodeId);
+      }
+    }
+  });
+}
+
+// ── Select agent ──────────────────────────────────────────────────────────────
+async function selectAgent(agentId) {
+  selectedAgent = agentId;
+
+  // Highlight card
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('active'));
+  document.getElementById(`card-${agentId}`)?.classList.add('active');
+
+  // Fetch blast radius
+  const res = await fetch(`${API}/blast-radius/${agentId}`);
+  blastData = await res.json();
+
+  renderRiskScore(blastData);
+  renderResourceLists(blastData);
+  highlightBlastRadius(agentId, blastData);
+  document.getElementById('paths-panel').innerHTML = '<div class="empty-state">Click a resource node to see attack paths</div>';
+}
+
+// ── Risk score ────────────────────────────────────────────────────────────────
+function renderRiskScore(data) {
+  const score = data.risk_score;
+  const el = document.getElementById('risk-score');
+  el.textContent = score;
+  el.style.color = score >= 75 ? '#f87171' : score >= 40 ? '#fb923c' : score >= 20 ? '#fbbf24' : '#4ade80';
+
+  const bar = document.getElementById('risk-bar');
+  bar.style.width = `${score}%`;
+  bar.style.background = score >= 75 ? '#f87171' : score >= 40 ? '#fb923c' : score >= 20 ? '#fbbf24' : '#4ade80';
+
+  document.getElementById('risk-caption').textContent =
+    `${data.total_unique_resources} resources reachable`;
+
+  document.getElementById('stat-total').textContent = data.total_unique_resources;
+  document.getElementById('stat-crit').textContent  = data.critical_count;
+  document.getElementById('stat-high').textContent  = data.high_count;
+  document.getElementById('stat-med').textContent   = data.medium_count;
+}
+
+// ── Resource lists ────────────────────────────────────────────────────────────
+function resourceRow(r, lateral = false) {
+  return `<div class="resource-row">
+    <span class="rname" title="${r.description}">${r.name}</span>
+    ${lateral ? '<span class="lateral-tag">lateral</span>' : ''}
+    <span class="sens-badge sens-${r.sensitivity}">${r.sensitivity}</span>
+  </div>`;
+}
+
+function renderResourceLists(data) {
+  const dl = document.getElementById('direct-list');
+  dl.innerHTML = data.direct_resources.length
+    ? data.direct_resources.map(r => resourceRow(r, false)).join('')
+    : '<div class="empty-state">None</div>';
+
+  const ll = document.getElementById('lateral-list');
+  ll.innerHTML = data.lateral_resources.length
+    ? data.lateral_resources.map(r => resourceRow(r, true)).join('')
+    : '<div class="empty-state">None — no lateral movement paths</div>';
+}
+
+// ── Graph highlighting ────────────────────────────────────────────────────────
+function highlightBlastRadius(agentId, data) {
+  if (!allNodes) return;
+
+  const directIds = new Set(data.direct_resources.map(r => r.id));
+  const lateralIds = new Set(data.lateral_resources.map(r => r.id));
+
+  // Dim everything, highlight blast radius nodes
+  allNodes.forEach(node => {
+    let update = { id: node.id, opacity: 0.15 };
+    if (node.id === agentId) {
+      update = { id: node.id, opacity: 1, borderWidth: 3 };
+    } else if (directIds.has(node.id)) {
+      update = { id: node.id, opacity: 1, borderWidth: 2 };
+    } else if (lateralIds.has(node.id)) {
+      update = { id: node.id, opacity: 0.8, borderWidth: 1.5 };
+    }
+    allNodes.update(update);
+  });
+
+  // Dim edges except those connecting blast radius nodes
+  const blastSet = new Set([agentId, ...directIds, ...lateralIds]);
+  allEdges.forEach(edge => {
+    const connected = blastSet.has(edge.from) || blastSet.has(edge.to);
+    allEdges.update({ id: edge.id, color: { color: connected ? undefined : '#1e293b', opacity: connected ? 1 : 0.1 }});
+  });
+}
+
+// ── What-if ───────────────────────────────────────────────────────────────────
+async function runWhatIf() {
+  const scope = document.getElementById('whatif-scope').value;
+  if (!scope) return alert('Select a scope first.');
+  if (!selectedAgent) return alert('Select an agent first.');
+
+  const res = await fetch(`${API}/what-if`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_id: selectedAgent, add_scope: scope }),
+  });
+  const data = await res.json();
+  const panel = document.getElementById('whatif-result');
+  panel.classList.add('visible');
+
+  const allNew = [...data.new_direct_resources, ...data.new_lateral_resources];
+  if (allNew.length === 0) {
+    panel.innerHTML = `<span style="color:#4ade80">✓ No new resources — scope already covered or no matching resources.</span>`;
+    return;
+  }
+
+  // Highlight new resources on graph
+  allNodes.forEach(node => {
+    const isNew = allNew.some(r => r.id === node.id);
+    if (isNew) allNodes.update({ id: node.id, opacity: 1, borderWidth: 3,
+      color: { background:'#3d1515', border:'#f87171', highlight:{background:'#3d1515',border:'#fff'} } });
+  });
+
+  panel.innerHTML = `
+    <div style="margin-bottom:6px">Adding <code style="color:var(--purple)">${scope}</code> would expose:</div>
+    <div class="whatif-delta">+${data.incremental_risk_delta} risk score</div>
+    <div style="margin:8px 0 4px;color:var(--muted)">New direct resources (${data.new_direct_resources.length}):</div>
+    ${data.new_direct_resources.map(r => `<div style="margin-left:8px;margin-bottom:3px">
+      <span class="sens-badge sens-${r.sensitivity}" style="font-size:9px">${r.sensitivity}</span>
+      ${r.name}
+    </div>`).join('') || '<div style="color:var(--muted);margin-left:8px">none</div>'}
+    <div style="margin:8px 0 4px;color:var(--muted)">New lateral resources (${data.new_lateral_resources.length}):</div>
+    ${data.new_lateral_resources.map(r => `<div style="margin-left:8px;margin-bottom:3px">
+      <span class="sens-badge sens-${r.sensitivity}" style="font-size:9px">${r.sensitivity}</span>
+      ${r.name} <span style="color:var(--muted);font-size:10px">(via lateral)</span>
+    </div>`).join('') || '<div style="color:var(--muted);margin-left:8px">none</div>'}
+    <div style="margin-top:8px;color:var(--muted);font-size:10px">${data.description}</div>
+  `;
+}
+
+// ── Attack paths ──────────────────────────────────────────────────────────────
+async function loadAttackPaths(agentId, resourceId) {
+  const encoded = encodeURIComponent(resourceId);
+  const res = await fetch(`${API}/attack-paths/${agentId}/${encoded}`);
+  const data = await res.json();
+
+  document.getElementById('paths-title').textContent =
+    `Attack paths → ${resourceId.split('//')[1] || resourceId}`;
+
+  const panel = document.getElementById('paths-panel');
+  if (!data.paths.length) {
+    panel.innerHTML = '<div class="empty-state">No path found</div>';
+    return;
+  }
+
+  panel.innerHTML = `<div class="scrollable">${data.paths.map((path, i) => `
+    <div class="attack-path">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Path ${i+1} (${path.length - 1} hops)</div>
+      ${path.map((step, si) => `
+        <div class="attack-step">
+          <span class="step-node step-${step.node_type}">${step.node_label}</span>
+          ${step.edge_label ? `<span class="step-arrow">→</span><span class="step-edge">${step.edge_label}</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `).join('')}</div>`;
+}
+
+init();
+</script>
+</body>
+</html>

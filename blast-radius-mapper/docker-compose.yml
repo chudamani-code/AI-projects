@@ -1,0 +1,54 @@
+version: "3.9"
+
+# Starts Neo4j and the FastAPI blast radius mapper API.
+# Open ui/index.html in your browser after both services are healthy.
+#
+# Usage:
+#   docker compose up --build
+#
+# Neo4j browser (optional, for raw Cypher queries):
+#   http://localhost:7474  (user: neo4j  password: blastradius)
+#
+# API docs:
+#   http://localhost:8000/docs
+#
+# The API auto-seeds the graph on first start.
+# To reseed: curl -X POST http://localhost:8000/seed
+
+services:
+  neo4j:
+    image: neo4j:5.19-community
+    environment:
+      NEO4J_AUTH: neo4j/blastradius
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+    ports:
+      - "7474:7474"   # Neo4j Browser
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: blastradius
+    ports:
+      - "8000:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./api:/app   # live reload during development
+
+volumes:
+  neo4j_data:
