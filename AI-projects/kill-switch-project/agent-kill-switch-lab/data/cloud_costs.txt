@@ -1,0 +1,4 @@
+Q3 cloud infrastructure costs increased 18% vs Q2.
+Primary driver: GPU compute for the new recommendation model.
+Reserved instance coverage dropped to 61% — action item: review RI portfolio.
+Data egress charges up 30% — investigate S3 Transfer Acceleration usage.

@@ -1,0 +1,5 @@
+Security incident log — week of 2026-04-28
+- [LOW]  Unusual IAM assume-role from IP 203.0.113.55 — reviewed, legitimate contractor
+- [MED]  S3 bucket public-access block disabled on logs-archive — re-enabled, ticket #4421
+- [HIGH] Agent-009 attempted network:external tool call — policy denied, circuit breaker tripped
+- [LOW]  5 failed SSH attempts on bastion — geo-blocked, no breach

@@ -1,0 +1,10 @@
+{
+  "agents": {
+    "allowed_ids": ["agent-001", "agent-002", "agent-003"],
+    "allowed_scopes": {
+      "agent-001": ["read:fs", "write:fs"],
+      "agent-002": ["read:fs"],
+      "agent-003": ["read:fs", "write:fs", "network:external"]
+    }
+  }
+}

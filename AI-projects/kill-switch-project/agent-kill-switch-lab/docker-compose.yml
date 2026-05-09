@@ -1,0 +1,59 @@
+version: "3.9"
+
+# Services:
+#   opa   — Open Policy Agent REST server (the policy sidecar)
+#   agent — the scoped AI agent (depends on opa being healthy first)
+#
+# Usage:
+#   export ANTHROPIC_API_KEY=sk-...
+#   docker compose up --build
+#
+# Kill switch demo:
+#   echo "ops triggered halt" > /tmp/agent_kill
+#   (the agent checks for this file on every loop iteration)
+#
+# Manual OPA query test:
+#   curl -s -X POST http://localhost:8181/v1/data/agent/allow \
+#     -H 'Content-Type: application/json' \
+#     -d '{"input":{"agent_id":"agent-001","tool_name":"read_file","tool_scope":"read:fs","inputs":{"path":"notes.txt"}}}' \
+#     | jq
+
+services:
+  opa:
+    image: openpolicyagent/opa:latest-rootless
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=info
+      - /policies/policy.rego
+      - /policies/data.json
+    volumes:
+      - ./opa:/policies:ro
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_ID=agent-001
+      - OPA_URL=http://opa:8181
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - KILL_SWITCH_FILE=/tmp/agent_kill
+      - MODEL=claude-sonnet-4-20250514
+    volumes:
+      - ./data:/data          # agent reads/writes here
+      - ./logs:/app/logs      # audit trail lands here
+    depends_on:
+      opa:
+        condition: service_healthy
+    command: >
+      python main.py
+      "List the files in the data directory and write a brief summary of each one to summary.txt."
