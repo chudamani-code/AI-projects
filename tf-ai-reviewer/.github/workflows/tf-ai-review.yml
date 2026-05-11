@@ -1,0 +1,87 @@
+name: AI Terraform Security Review
+
+on:
+  pull_request:
+    paths:
+      - "**.tf"
+      - "**.tfvars"
+
+permissions:
+  contents:      read
+  pull-requests: write   # needed to post the review comment
+
+jobs:
+  ai-security-review:
+    name: GCP Security Architect Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for git diff
+
+      # ── Capture the Terraform diff ─────────────────────────────────────────
+      - name: Generate Terraform diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD -- '*.tf' '*.tfvars' > terraform.diff
+          echo "--- Diff stats ---"
+          wc -l terraform.diff
+          echo "---"
+          head -80 terraform.diff
+
+      # ── Optional: run terraform plan ───────────────────────────────────────
+      # Remove this step if your Terraform requires cloud credentials.
+      # The AI can review from the diff alone.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+        continue-on-error: true
+
+      - name: Terraform Init (best-effort)
+        id: tf-init
+        run: terraform init -backend=false 2>&1 | head -50 || true
+        continue-on-error: true
+
+      - name: Terraform Plan (best-effort)
+        id: tf-plan
+        run: |
+          terraform plan -no-color 2>&1 | head -300 > terraform_plan.txt || true
+          echo "Plan captured: $(wc -l < terraform_plan.txt) lines"
+        continue-on-error: true
+
+      # ── Install dependencies ───────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install reviewer
+        run: pip install anthropic httpx pydantic fastapi
+
+      # ── Run AI review and post comment ─────────────────────────────────────
+      - name: Run AI security review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python cli.py \
+            --diff terraform.diff \
+            --plan terraform_plan.txt \
+            --post-comment \
+            --pr-number ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }}
+        # Note: exit code 0 even on NEEDS_REVIEW (comment is advisory, not blocking)
+        # To make HIGH/CRITICAL findings block the merge, add: --fail-on-review
+
+      # ── Upload artifacts for debugging ────────────────────────────────────
+      - name: Upload diff artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-review-artifacts
+          path: |
+            terraform.diff
+            terraform_plan.txt
+          retention-days: 7

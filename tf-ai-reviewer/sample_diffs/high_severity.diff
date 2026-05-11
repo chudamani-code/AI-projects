@@ -1,0 +1,56 @@
+diff --git a/infrastructure/iam.tf b/infrastructure/iam.tf
+index a3f4d2c..b8e1f9d 100644
+--- a/infrastructure/iam.tf
++++ b/infrastructure/iam.tf
+@@ -1,15 +1,27 @@
+ # IAM bindings for the deployment service account
+ 
+-resource "google_storage_bucket_iam_member" "deploy_sa_access" {
+-  bucket = google_storage_bucket.app_data.name
+-  role   = "roles/storage.objectAdmin"
+-  member = "serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com"
+-}
++# Temporarily grant broader access to unblock the deployment
++resource "google_project_iam_binding" "developer_sa_binding" {
++  project = "my-project-prod"
++  role    = "roles/owner"
++
++  members = [
++    "serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com",
++    "user:junior-dev@company.com",
++  ]
++}
+ 
+ resource "google_storage_bucket" "app_data" {
+   name                        = "company-app-data-prod"
+   location                    = "US"
+-  uniform_bucket_level_access = true
++  uniform_bucket_level_access = false
+ }
++
++resource "google_storage_bucket_iam_binding" "legacy_access" {
++  bucket = google_storage_bucket.app_data.name
++  role   = "roles/storage.objectViewer"
++
++  members = [
++    "allAuthenticatedUsers",
++  ]
++}
+diff --git a/infrastructure/sql.tf b/infrastructure/sql.tf
+index 9c2a1b3..f4e8a1c 100644
+--- a/infrastructure/sql.tf
++++ b/infrastructure/sql.tf
+@@ -8,7 +8,11 @@ resource "google_sql_database_instance" "main" {
+   settings {
+     tier = "db-custom-2-7680"
+     ip_configuration {
+-      ipv4_enabled    = false
+-      private_network = google_compute_network.vpc.id
++      ipv4_enabled = true
++      authorized_networks {
++        name  = "allow-all"
++        value = "0.0.0.0/0"
++      }
+     }
+   }
+ }

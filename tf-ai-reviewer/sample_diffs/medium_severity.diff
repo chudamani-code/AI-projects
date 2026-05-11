@@ -1,0 +1,24 @@
+diff --git a/infrastructure/iam.tf b/infrastructure/iam.tf
+index f1a2b3c..9d4e5f6 100644
+--- a/infrastructure/iam.tf
++++ b/infrastructure/iam.tf
+@@ -5,6 +5,16 @@
+ resource "google_project_iam_member" "dataflow_worker" {
+   project = var.project_id
+   role    = "roles/dataflow.worker"
+-  member  = "serviceAccount:dataflow-sa@${var.project_id}.iam.gserviceaccount.com"
++  member  = "serviceAccount:dataflow-sa@${var.project_id}.iam.gserviceaccount.com"
+ }
++
++# Allow the reporting SA to read BigQuery data
++resource "google_project_iam_member" "reporting_bq" {
++  project = var.project_id
++  role    = "roles/bigquery.admin"
++  member  = "serviceAccount:reporting-sa@${var.project_id}.iam.gserviceaccount.com"
++}
++
++resource "google_storage_bucket" "reports" {
++  name     = "${var.project_id}-reports"
++  location = "US"
++  # TODO: add uniform_bucket_level_access
++}
