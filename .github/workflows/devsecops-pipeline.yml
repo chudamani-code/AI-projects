@@ -1,0 +1,61 @@
+name: DevSecOps Security Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  terraform-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform Format Check
+        run: terraform -chdir=terraform-infra fmt -check -recursive
+      - name: Terraform Init & Validate
+        run: |
+          terraform -chdir=terraform-infra init -backend=false
+          terraform -chdir=terraform-infra validate
+
+  checkov-sast:
+    runs-on: ubuntu-latest
+    needs: terraform-lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform-infra
+          config_file: security-policies/checkov.yaml
+          quiet: true
+
+  opa-policy-check:
+    runs-on: ubuntu-latest
+    needs: terraform-lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Generate Terraform Plan JSON
+        run: |
+          terraform -chdir=terraform-infra init -backend=false
+          terraform -chdir=terraform-infra plan -out=tfplan.binary
+          terraform -chdir=terraform-infra show -json tfplan.binary > tfplan.json
+      - name: Evaluate OPA Policies
+        uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+      - run: opa eval --input terraform-infra/tfplan.json --data security-policies/opa --format pretty "data.terraform.security.s3_encryption.deny"
+
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy IaC Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: terraform-infra
+          severity: CRITICAL,HIGH
+          exit-code: 1
