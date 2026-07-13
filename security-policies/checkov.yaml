@@ -1,0 +1,8 @@
+framework:
+  - terraform
+  - github_actions
+skip-check:
+  - CKV_AWS_18   # example: access logging - document why if skipped
+soft-fail: false
+output: cli
+download-external-modules: false
