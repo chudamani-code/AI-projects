@@ -1,0 +1,21 @@
+# Note: Sentinel policies only run inside Terraform Cloud/Enterprise.
+# This file is included as a demonstration of policy-as-code fluency
+# across both the open-source (OPA) and enterprise (Sentinel) ecosystems;
+# it is not executed by the GitHub Actions pipeline in this repo.
+
+import "tfplan/v2" as tfplan
+
+s3_buckets = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_s3_bucket" and
+    (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+encryption_enforced = rule {
+    all s3_buckets as _, bucket {
+        bucket.change.after.server_side_encryption_configuration else [] is not []
+    }
+}
+
+main = rule {
+    encryption_enforced
+}
